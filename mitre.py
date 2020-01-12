@@ -5,10 +5,11 @@ import json
 import logging
 import taxii2client
 import stix2
+import csv
 
 logger = logging.getLogger(__name__)
 
-PROXIES = {'http': 'http://proxy.com:8080', 'https': 'https://proxy.com:8081'}
+PROXIES = {'http': 'http://proxy.nab.com.au:10091', 'https': 'https://proxy.nab.com.au:10091'}
 STIX_URL = "https://cti-taxii.mitre.org"
 
 def hook_response(response, *args, **kwargs):
@@ -35,13 +36,6 @@ def create_session():
 
         return session
 
-def print_values(mitre_filter):
-        #val = 0
-        #for val in range(len(mitre_filter)):
-        #        print("ID: {}\n Name: {}\n".format(mitre_filter[val]['id'],mitre_filter[val]['name']))
-        return mitre_filter[0]['external_references'][0]['external_id']
-
-        #print(mitre_filter[0])
 
 def retrieve_collection(collection_id):
         # Initialize dictionary to hold Enterprise ATT&CK content
@@ -70,8 +64,6 @@ def retrieve_collection(collection_id):
         for field in taxii_filters:
                 attack[field] = tc_source.query(taxii_filters[field])
 
-        # For visual purposes, print the first technique received from the server
-        # print(attack["techniques"][0])
         return attack
 
 def taxii_feed():
@@ -81,6 +73,60 @@ def taxii_feed():
         for collection in api_root.collections:
                 collection_ids[collection.title] = collection.id
         return collection_ids
+
+
+def mitre_group_information(mitre_filter):
+        # Create some dictionaries just to store the fields we want
+        mitre_id = []
+        group_name = []
+        for identifier in mitre_filter:
+                mitre_id.append(identifier['external_references'][0]['external_id'])
+                group_name.append(identifier['name'])
+
+        return mitre_id, group_name
+
+def write_csv_group_and_technique(groupid,groupname,grouptechniques):      
+        with open('technique_mappings.csv','a',newline='') as csvfile:
+                fieldnames = ['group_id', 'common_name', 'technique_id']
+                writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+                for technique in grouptechniques:
+                        writer.writerow({'group_id': groupid, 'common_name': groupname,'technique_id': technique.get('techniqueID')})    
+
+def get_group_techniques(groups):
+        # While the STIX feeds have the technique, they don't have the group to technique mapping, need to rely on the JSON for that.
+        #https://attack.mitre.org/groups/G0018/G0018-enterprise-layer.json
+        #https://attack.mitre.org/groups/G0026/G0026-enterprise-layer.json
+        mitreids, groupnames = mitre_group_information(groups)
+        print(mitreids)
+        for mid, gid in zip(mitreids,groupnames):
+                print(mid, gid)
+                session = create_session()
+                resp = session.get(url(mid))
+                if resp.status_code == 200:
+                        techniques = resp.json().get('techniques')
+                        write_csv_group_and_technique(mid,gid,techniques)
+                else:
+                        '''
+                        There's a bunch which no longer exist for various reasons, such as oilrig. OilRig (G0049) was previously tracked under two distinct groups, APT34 and OilRig, but was combined due to additional reporting giving higher confidence about the overlap of the activity.
+
+                        APT34 (G0057) has no JSON available, so need to remove it.
+                        '''
+                        continue
+           
+def technique_information(techniques):
+        tech_dict = {}
+        tech_info_dict = {}
+        for technique in techniques:
+                phase_list = []
+                for phase in technique['kill_chain_phases']:
+                        phase_list.append(phase['phase_name'])
+                tech_info_dict['kill_chain_phases'] = phase_list
+                tech_info_dict['name'] = technique['name']
+                tech_dict[technique['external_references'][0]['url'].split('/')[-1]] = tech_info_dict
+
+        return tech_dict
+
+
 
 def start():
         taxii_collection = taxii_feed()
@@ -93,16 +139,21 @@ def start():
         Only looking at Enterprise ATT&CK at the moment
         '''                  
         attack_model = retrieve_collection(taxii_collection['Enterprise ATT&CK'])
-        test_values = print_values(attack_model['groups'])
-        print(attack_model['groups'][0])
 
-        session = create_session()
-        resp = session.get(url(test_values)).json()
-        print(resp)
+        mitre_id, group_name = mitre_group_information(attack_model['groups'])
+        #technique_dictionary = technique_information(attack_model['techniques'])
+        
+        #print(dict(zip(mitre_id, group_name)))
+        #print(technique_dictionary)
+        
 
-        # An example:
-        # https://attack.mitre.org/groups/G0018/G0018-enterprise-layer.json
+        #get_group_techniques(attack_model['groups'])
+        
 
+        # For software
+        # https://attack.mitre.org/software/S0017/S0017-enterprise-layer.json
+
+        
 
 if __name__ == "__main__":
         start()

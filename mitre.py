@@ -9,7 +9,7 @@ import csv
 
 logger = logging.getLogger(__name__)
 
-PROXIES = {'http': 'http://proxy.nab.com.au:10091', 'https': 'https://proxy.nab.com.au:10091'}
+#PROXIES = {'http': '', 'https': ''}
 STIX_URL = "https://cti-taxii.mitre.org"
 
 def hook_response(response, *args, **kwargs):
@@ -32,7 +32,7 @@ def create_session():
         session.verify = False
         session.headers = headers
         session.hooks = {'response': hook_response}
-        session.proxies = PROXIES
+        #session.proxies = PROXIES
 
         return session
 
@@ -43,7 +43,7 @@ def retrieve_collection(collection_id):
 
         # Establish TAXII2 Collection instance for Enterprise ATT&CK collection
         collection_url = STIX_URL + "/stix/collections/{}/".format(collection_id)
-        collection = taxii2client.Collection(collection_url,verify=False,proxies=PROXIES)
+        collection = taxii2client.Collection(collection_url,verify=False)#,proxies=PROXIES)
 
         # Supply the collection to TAXIICollection
         tc_source = stix2.TAXIICollectionSource(collection)
@@ -68,7 +68,7 @@ def retrieve_collection(collection_id):
 
 def taxii_feed():
         collection_ids = {}
-        server = taxii2client.Server(STIX_URL + "/taxii/",verify=False,proxies=PROXIES)
+        server = taxii2client.Server(STIX_URL + "/taxii/",verify=False)#,proxies=PROXIES)
         api_root = server.api_roots[0]
         for collection in api_root.collections:
                 collection_ids[collection.title] = collection.id
